@@ -5,7 +5,11 @@
 
 import type { Browser, BrowserContext, BrowserContextOptions, LaunchOptions as PlaywrightLaunchOptions } from "playwright-core";
 import type { LaunchOptions, LaunchContextOptions, LaunchPersistentContextOptions } from "./types.js";
-import { DEFAULT_VIEWPORT, IGNORE_DEFAULT_ARGS } from "./config.js";
+import {
+  DEFAULT_VIEWPORT,
+  IGNORE_DEFAULT_ARGS,
+  binarySupportsHeadlessNoViewport,
+} from "./config.js";
 import { buildArgs } from "./args.js";
 import { maybeWarnWindowsFonts } from "./fonts.js";
 import { ensureBinary } from "./download.js";
@@ -74,15 +78,17 @@ export function buildContextOptions(
   options: LaunchContextOptions = {}
 ): BrowserContextOptions {
   // Headed: viewport=null (no emulation) so the page tracks the real window and
-  // outerWidth >= innerWidth stays coherent — CDP viewport emulation forces
-  // inner > outer = a physically impossible window = bot tell. Headless has no
-  // window chrome (outer == inner), so a fixed viewport stays coherent and keeps
-  // dimensions deterministic. Explicit viewport (incl. null) is always honored.
+  // outerWidth >= innerWidth stays coherent. Headless on a newer binary: also
+  // null, since it reports coherent dimensions without emulation. Headless on an
+  // older binary: a fixed DEFAULT_VIEWPORT keeps dimensions coherent and
+  // deterministic. Explicit viewport (incl. null) is always honored.
   const headless = effectiveHeadless(options);
+  const headlessNoViewport =
+    headless && binarySupportsHeadlessNoViewport(options.licenseKey, options.browserVersion);
   const viewport =
     options.viewport !== undefined
       ? options.viewport
-      : headless
+      : headless && !headlessNoViewport
         ? DEFAULT_VIEWPORT
         : null;
   return {
@@ -172,8 +178,12 @@ export async function launch(options: LaunchOptions = {}): Promise<Browser> {
   // Headed: a bare browser.newPage() would inherit Playwright's emulated 1280x720
   // viewport -> outerWidth < innerWidth (impossible window = bot tell). Default
   // newPage()/newContext() to viewport:null so the page tracks the real window.
-  // Headless keeps Playwright's default viewport (coherent there).
-  if (!effectiveHeadless(options)) {
+  // Headless on a newer binary also qualifies (coherent dimensions natively);
+  // older headless keeps Playwright's default viewport. Mirrors Python launch().
+  if (
+    !effectiveHeadless(options) ||
+    binarySupportsHeadlessNoViewport(options.licenseKey, options.browserVersion)
+  ) {
     applyDefaultNoViewport(browser);
   }
   await humanizeBrowser(browser, options);

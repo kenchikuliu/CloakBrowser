@@ -23,6 +23,7 @@ from urllib.parse import quote, unquote, urlparse, urlunparse
 from .config import (
     DEFAULT_VIEWPORT,
     IGNORE_DEFAULT_ARGS,
+    binary_supports_headless_no_viewport,
     get_default_stealth_args,
     normalize_requested_version,
 )
@@ -85,16 +86,21 @@ def _default_no_viewport_async(browser: Any) -> None:
     browser.new_page = _patched_new_page
 
 
-def _resolve_context_viewport(viewport: Any, headless: bool) -> dict[str, Any]:
+def _resolve_context_viewport(
+    viewport: Any, headless: bool, headless_no_viewport: bool = False
+) -> dict[str, Any]:
     """Return the viewport kwarg for a context.
 
-    Headed: no emulated viewport so the page tracks the real window (CDP viewport
-    emulation forces outerWidth < innerWidth = a physically impossible window =
-    bot tell). Headless: a fixed ``DEFAULT_VIEWPORT`` stays coherent (outer == inner)
-    and keeps dimensions deterministic. Explicit ``viewport`` / ``None`` honored.
+    Headed: no emulated viewport so the page tracks the real window. Headless on a
+    newer binary (``headless_no_viewport``): also ``no_viewport``, since it reports
+    coherent dimensions without emulation. Headless on an older binary: a fixed
+    ``DEFAULT_VIEWPORT`` keeps dimensions coherent and deterministic. Explicit
+    ``viewport`` / ``None`` honored.
     """
     if viewport is _VIEWPORT_UNSET:
-        return {"viewport": DEFAULT_VIEWPORT} if headless else {"no_viewport": True}
+        if headless and not headless_no_viewport:
+            return {"viewport": DEFAULT_VIEWPORT}
+        return {"no_viewport": True}
     if viewport is None:
         return {"no_viewport": True}
     return {"viewport": viewport}
@@ -234,10 +240,11 @@ def launch(
 
     browser.close = _close_with_cleanup
 
-    # Headed: default new_page()/new_context() to no_viewport so the page tracks the
-    # real window (avoids the impossible-window tell). Headless keeps Playwright's
-    # default viewport (coherent there). Apply before humanize so the wraps compose.
-    if not headless:
+    # Default new_page()/new_context() to no_viewport for headed (page tracks the
+    # real window) and for headless on binaries that report coherent dimensions
+    # natively; older headless binaries keep Playwright's default viewport. Apply
+    # before humanize so the wraps compose.
+    if not headless or binary_supports_headless_no_viewport(license_key, browser_version):
         _default_no_viewport(browser)
 
     # Human-like behavioral patching
@@ -339,8 +346,9 @@ async def launch_async(  # noqa: C901
 
     browser.close = _close_with_cleanup
 
-    # Headed: default new_page()/new_context() to no_viewport (see launch()).
-    if not headless:
+    # Default new_page()/new_context() to no_viewport for headed and qualifying
+    # headless binaries (see launch()).
+    if not headless or binary_supports_headless_no_viewport(license_key, browser_version):
         _default_no_viewport_async(browser)
 
     # Human-like behavioral patching (async variant)
@@ -440,7 +448,11 @@ def launch_persistent_context(
     context_kwargs: dict[str, Any] = {}
     if user_agent:
         context_kwargs["user_agent"] = user_agent
-    context_kwargs.update(_resolve_context_viewport(viewport, headless))
+    context_kwargs.update(
+        _resolve_context_viewport(
+            viewport, headless, binary_supports_headless_no_viewport(license_key, browser_version)
+        )
+    )
     if color_scheme:
         context_kwargs["color_scheme"] = color_scheme
     context_kwargs.update(kwargs)
@@ -575,7 +587,11 @@ async def launch_persistent_context_async(
     context_kwargs: dict[str, Any] = {}
     if user_agent:
         context_kwargs["user_agent"] = user_agent
-    context_kwargs.update(_resolve_context_viewport(viewport, headless))
+    context_kwargs.update(
+        _resolve_context_viewport(
+            viewport, headless, binary_supports_headless_no_viewport(license_key, browser_version)
+        )
+    )
     if color_scheme:
         context_kwargs["color_scheme"] = color_scheme
     context_kwargs.update(kwargs)
@@ -688,7 +704,11 @@ def launch_context(
     context_kwargs: dict[str, Any] = {}
     if user_agent:
         context_kwargs["user_agent"] = user_agent
-    context_kwargs.update(_resolve_context_viewport(viewport, headless))
+    context_kwargs.update(
+        _resolve_context_viewport(
+            viewport, headless, binary_supports_headless_no_viewport(license_key, browser_version)
+        )
+    )
     if color_scheme:
         context_kwargs["color_scheme"] = color_scheme
     context_kwargs.update(kwargs)
@@ -807,7 +827,11 @@ async def launch_context_async(
     context_kwargs: dict[str, Any] = {}
     if user_agent:
         context_kwargs["user_agent"] = user_agent
-    context_kwargs.update(_resolve_context_viewport(viewport, headless))
+    context_kwargs.update(
+        _resolve_context_viewport(
+            viewport, headless, binary_supports_headless_no_viewport(license_key, browser_version)
+        )
+    )
     if color_scheme:
         context_kwargs["color_scheme"] = color_scheme
     context_kwargs.update(kwargs)

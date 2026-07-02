@@ -6,7 +6,11 @@
 
 import type { Browser } from "puppeteer-core";
 import type { LaunchOptions } from "./types.js";
-import { DEFAULT_VIEWPORT, IGNORE_DEFAULT_ARGS } from "./config.js";
+import {
+  DEFAULT_VIEWPORT,
+  IGNORE_DEFAULT_ARGS,
+  binarySupportsHeadlessNoViewport,
+} from "./config.js";
 import { buildArgs } from "./args.js";
 import { maybeWarnWindowsFonts } from "./fonts.js";
 import { ensureBinary } from "./download.js";
@@ -30,7 +34,13 @@ function resolveDefaultViewport(options: LaunchOptions): { width: number; height
   if (launchOpts.defaultViewport !== undefined) {
     return launchOpts.defaultViewport as { width: number; height: number } | null;
   }
-  return (options.headless ?? true) ? DEFAULT_VIEWPORT : null;
+  const headless = options.headless ?? true;
+  // Headed and newer headless binaries: null (no emulation, coherent dimensions).
+  // Older headless binaries: a fixed viewport keeps dimensions coherent.
+  if (!headless || binarySupportsHeadlessNoViewport(options.licenseKey, options.browserVersion)) {
+    return null;
+  }
+  return DEFAULT_VIEWPORT;
 }
 
 /** Resolve binary path, geoip, webrtc, and build final Chrome args. */
