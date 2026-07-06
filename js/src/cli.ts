@@ -21,7 +21,7 @@ import {
   normalizeRequestedVersion,
   CHROMIUM_VERSION,
 } from "./config.js";
-import { windowsFontsPresent } from "./fonts.js";
+import { countFontsPresent, WINDOWS_FONT_TELLS, OFFICE_FONT_TELLS } from "./fonts.js";
 import { resolveLicenseKey, validateLicense, getProLatestVersion, type LicenseInfo } from "./license.js";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
@@ -192,9 +192,13 @@ export async function collectDiagnostics(quick: boolean): Promise<Record<string,
   // Windows-font probe — only meaningful on a Linux host spoofing Windows.
   // Omitted entirely off Linux, where it carries no signal.
   if (os.platform() === "linux") {
-    const present = windowsFontsPresent();
+    // Strict count, not "any one present" — real font installs are atomic
+    // (you have the whole pack or none), so report how complete the set is.
+    const winN = countFontsPresent(WINDOWS_FONT_TELLS);
+    const officeN = countFontsPresent(OFFICE_FONT_TELLS);
     diag.fonts = {
-      windows_fonts: present === true ? "ok" : present === false ? "missing" : "unknown",
+      windows: winN === null ? null : [winN, WINDOWS_FONT_TELLS.length],
+      office: officeN === null ? null : [officeN, OFFICE_FONT_TELLS.length],
     };
   }
 
@@ -254,10 +258,24 @@ function printDiagnostics(diag: Record<string, any>): void {
   }
 
   if (diag.fonts) {
-    const fonts = diag.fonts.windows_fonts;
-    console.log(`Win fonts: ${fonts}`);
-    if (fonts === "missing") {
-      console.log("           → spoofing Windows on Linux without Windows fonts; install msttcorefonts");
+    const win = diag.fonts.windows;
+    if (win === null) {
+      console.log("Win fonts: unknown (fc-list unavailable)");
+    } else {
+      const [n, total] = win;
+      const verdict = n === total ? "ok" : n === 0 ? "missing" : "partial";
+      console.log(`Win fonts: ${verdict} (${n}/${total})`);
+      if (n < total) {
+        console.log("           → incomplete Windows font set; copy real Windows fonts (Segoe UI, Calibri, Consolas)");
+      }
+    }
+    const office = diag.fonts.office;
+    if (office != null) {
+      const [n, total] = office;
+      // Office is informational only — no Office pack is a normal Windows
+      // persona (~53% of real machines have none), so no install nudge.
+      const verdict = n === total ? "ok" : n === 0 ? "absent" : "partial";
+      console.log(`Office fonts: ${verdict} (${n}/${total})`);
     }
   }
 

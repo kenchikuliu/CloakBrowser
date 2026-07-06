@@ -205,11 +205,19 @@ def _collect_diagnostics(quick: bool) -> dict:
     # Windows-font probe — only meaningful on a Linux host spoofing Windows.
     # Omitted entirely off Linux, where it carries no signal.
     if platform.system() == "Linux":
-        from .browser import _windows_fonts_present
+        from .browser import (
+            _OFFICE_FONT_TELLS,
+            _WINDOWS_FONT_TELLS,
+            _count_fonts_present,
+        )
 
-        present = _windows_fonts_present()
+        # Strict count, not "any one present" — real font installs are atomic
+        # (you have the whole pack or none), so report how complete the set is.
+        win_n = _count_fonts_present(_WINDOWS_FONT_TELLS)
+        office_n = _count_fonts_present(_OFFICE_FONT_TELLS)
         diag["fonts"] = {
-            "windows_fonts": {True: "ok", False: "missing", None: "unknown"}[present]
+            "windows": None if win_n is None else [win_n, len(_WINDOWS_FONT_TELLS)],
+            "office": None if office_n is None else [office_n, len(_OFFICE_FONT_TELLS)],
         }
 
     diag["license"] = license_info
@@ -270,10 +278,22 @@ def _print_diagnostics(diag: dict) -> None:
             print("           → install the missing system libraries (e.g. apt-get install)")
 
     if "fonts" in diag:
-        fonts = diag["fonts"]["windows_fonts"]
-        print(f"Win fonts: {fonts}")
-        if fonts == "missing":
-            print("           → spoofing Windows on Linux without Windows fonts; install msttcorefonts")
+        win = diag["fonts"]["windows"]
+        if win is None:
+            print("Win fonts: unknown (fc-list unavailable)")
+        else:
+            n, total = win
+            verdict = "ok" if n == total else "missing" if n == 0 else "partial"
+            print(f"Win fonts: {verdict} ({n}/{total})")
+            if n < total:
+                print("           → incomplete Windows font set; copy real Windows fonts (Segoe UI, Calibri, Consolas)")
+        office = diag["fonts"].get("office")
+        if office is not None:
+            n, total = office
+            # Office is informational only — no Office pack is a normal Windows
+            # persona (~53% of real machines have none), so no install nudge.
+            verdict = "ok" if n == total else "absent" if n == 0 else "partial"
+            print(f"Office fonts: {verdict} ({n}/{total})")
 
     lic = diag["license"]
     tier = lic["tier"]

@@ -132,10 +132,26 @@ static void PrintDiagnostics(Dictionary<string, object?> diag)
 
     if (diag.TryGetValue("fonts", out var fontsObj) && fontsObj is Dictionary<string, object?> fonts)
     {
-        string winFonts = (string)fonts["windows_fonts"]!;
-        Console.WriteLine($"Win fonts: {winFonts}");
-        if (winFonts == "missing")
-            Console.WriteLine("           → spoofing Windows on Linux without Windows fonts; install msttcorefonts");
+        if (fonts["windows"] is int[] win)
+        {
+            int n = win[0], total = win[1];
+            string verdict = n == total ? "ok" : n == 0 ? "missing" : "partial";
+            Console.WriteLine($"Win fonts: {verdict} ({n}/{total})");
+            if (n < total)
+                Console.WriteLine("           → incomplete Windows font set; copy real Windows fonts (Segoe UI, Calibri, Consolas)");
+        }
+        else
+        {
+            Console.WriteLine("Win fonts: unknown (fc-list unavailable)");
+        }
+        // Office is informational only — no Office pack is a normal Windows
+        // persona (~53% of real machines have none), so no install nudge.
+        if (fonts.TryGetValue("office", out var officeObj) && officeObj is int[] office)
+        {
+            int n = office[0], total = office[1];
+            string verdict = n == total ? "ok" : n == 0 ? "absent" : "partial";
+            Console.WriteLine($"Office fonts: {verdict} ({n}/{total})");
+        }
     }
 
     var lic = (Dictionary<string, object?>)diag["license"]!;

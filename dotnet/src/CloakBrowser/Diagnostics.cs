@@ -63,10 +63,14 @@ internal static class Diagnostics
         // Omitted entirely off Linux, where it carries no signal.
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
-            bool? present = CloakLauncher.WindowsFontsPresent();
+            // Strict count, not "any one present" — real font installs are atomic
+            // (you have the whole pack or none), so report how complete the set is.
+            int? winN = CloakLauncher.CountFontsPresent(CloakLauncher.WindowsFontTells);
+            int? officeN = CloakLauncher.CountFontsPresent(CloakLauncher.OfficeFontTells);
             diag["fonts"] = new Dictionary<string, object?>
             {
-                ["windows_fonts"] = present == true ? "ok" : present == false ? "missing" : "unknown",
+                ["windows"] = winN is null ? null : new[] { winN.Value, CloakLauncher.WindowsFontTells.Length },
+                ["office"] = officeN is null ? null : new[] { officeN.Value, CloakLauncher.OfficeFontTells.Length },
             };
         }
 
